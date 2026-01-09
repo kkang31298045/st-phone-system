@@ -23,7 +23,7 @@ window.STPhone.Apps.Camera = (function() {
                 color: #555;
             }
             .st-cam-placeholder-icon {
-                font-size: 36px;
+                font-size: 48px;
                 margin-bottom: 10px;
                 opacity: 0.5;
             }
@@ -241,7 +241,7 @@ Example output format:
             <div class="st-camera-app">
                 <div class="st-cam-viewfinder" id="st-cam-preview">
                     <div class="st-cam-placeholder" id="st-cam-placeholder">
-                        <div class="st-cam-placeholder-icon"><i class="fa-solid fa-camera"></i></div>
+                        <div class="st-cam-placeholder-icon">📷</div>
                         <div>촬영할 장면을 입력하세요</div>
                     </div>
                     <div class="st-cam-loader" id="st-cam-spinner" style="display:none;"></div>
@@ -250,8 +250,8 @@ Example output format:
                     <div class="st-cam-status" id="st-cam-status">● REC</div>
                     
                     <div class="st-cam-overlay-btns" id="st-cam-overlay-btns" style="display:none;">
-                        <div class="st-cam-overlay-btn" id="st-save-album"><i class="fa-solid fa-download"></i> 앨범에 저장</div>
-                        <div class="st-cam-overlay-btn" id="st-save-phone-bg"><i class="fa-solid fa-mobile-screen"></i> 폰 배경으로</div>
+                        <div class="st-cam-overlay-btn" id="st-save-album">💾 앨범에 저장</div>
+                        <div class="st-cam-overlay-btn" id="st-save-phone-bg">📱 폰 배경으로</div>
                     </div>
                 </div>
                 
@@ -295,7 +295,7 @@ Example output format:
                 updateLoadingStatus("🧠 AI가 구도를 구상하는 중...");
                 let finalPrompt = await generateDetailedPrompt(text);
 
-                updateLoadingStatus("이미지 생성 중...");
+                updateLoadingStatus("📸 이미지 생성 중...");
                 const imageUrl = await generateImage(finalPrompt);
 
                 if (imageUrl && typeof imageUrl === 'string' && 
@@ -312,7 +312,7 @@ Example output format:
                     $overlayBtns.show();
                     $status.removeClass('processing error').text('● 촬영완료').show();
                     
-                    toastr.success("촬영 완료!");
+                    toastr.success("📸 촬영 완료!");
                     
                 } else {
                     throw new Error("이미지 생성에 실패했습니다.\n다른 프롬프트로 시도해보세요.");
@@ -323,7 +323,7 @@ Example output format:
                 toastr.error(err.message || "촬영 중 오류가 발생했습니다.");
                 $status.removeClass('processing').addClass('error').text('● 오류').show();
                 $placeholder.html(`
-                    <div class="st-cam-placeholder-icon"><i class="fa-solid fa-circle-exclamation"></i></div>
+                    <div class="st-cam-placeholder-icon">❌</div>
                     <div>촬영 실패</div>
                     <div style="font-size:11px;color:#666;margin-top:5px;">${err.message || '다시 시도해주세요'}</div>
                 `).show();
@@ -352,7 +352,7 @@ Example output format:
                     prompt: $prompt.val().trim(),
                     timestamp: Date.now()
                 });
-                toastr.success("앨범에 저장되었습니다!");
+                toastr.success("💾 앨범에 저장되었습니다!");
             } else if (!window.STPhone.Apps.Album) {
                 toastr.error("앨범 앱을 찾을 수 없습니다.");
             }

@@ -17,7 +17,7 @@ window.STPhone.Apps.Album = (function() {
             }
             
             .st-album-header {
-                padding: 20px 20px 15px;
+                padding: 20px 15px 15px;
                 font-size: 28px;
                 font-weight: 700;
                 flex-shrink: 0;
@@ -44,7 +44,7 @@ window.STPhone.Apps.Album = (function() {
                 color: var(--pt-sub-text, #86868b);
             }
             .st-album-empty-icon {
-                font-size: 36px;
+                font-size: 64px;
                 margin-bottom: 15px;
                 opacity: 0.5;
             }
@@ -223,7 +223,7 @@ window.STPhone.Apps.Album = (function() {
         if (photos.length === 0) {
             gridContent = `
                 <div class="st-album-empty">
-                    <div class="st-album-empty-icon"><i class="fa-regular fa-image"></i></div>
+                    <div class="st-album-empty-icon">🖼️</div>
                     <div>앨범이 비어있습니다</div>
                     <div style="font-size:12px;margin-top:5px;">카메라로 사진을 찍어보세요</div>
                 </div>
@@ -273,8 +273,8 @@ window.STPhone.Apps.Album = (function() {
                 <div class="st-album-viewer-header">
                     <div class="st-album-viewer-close" id="st-viewer-close">✕</div>
                     <div class="st-album-viewer-actions">
-                        <button class="st-album-viewer-btn" id="st-viewer-phone-bg"><i class="fa-solid fa-mobile-screen"></i> 폰 배경</button>
-                        <button class="st-album-viewer-btn delete" id="st-viewer-delete"><i class="fa-solid fa-trash"></i></button>
+                        <button class="st-album-viewer-btn" id="st-viewer-phone-bg">📱 폰 배경</button>
+                        <button class="st-album-viewer-btn delete" id="st-viewer-delete">🗑️</button>
                     </div>
                 </div>
                 <div class="st-album-viewer-image">
@@ -307,7 +307,7 @@ window.STPhone.Apps.Album = (function() {
                 deletePhoto(index);
                 $('#st-album-viewer').remove();
                 open();
-                toastr.info("사진이 삭제되었습니다.");
+                toastr.info("🗑️ 사진이 삭제되었습니다.");
             }
         });
     }

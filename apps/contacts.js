@@ -15,14 +15,14 @@ window.STPhone.Apps.Contacts = (function() {
                 font-family: var(--pt-font, -apple-system, sans-serif);
             }
             .st-contacts-header {
-                padding: 20px 20px 15px;
+                padding: 20px 15px 10px;
                 font-size: 28px;
                 font-weight: 700;
                 flex-shrink: 0;
             }
             .st-contacts-search {
-                margin: 0 20px 12px;
-                padding: 12px 16px;
+                margin: 0 15px 10px;
+                padding: 10px 15px;
                 border-radius: 10px;
                 border: none;
                 background: var(--pt-card-bg, #fff);
@@ -33,12 +33,12 @@ window.STPhone.Apps.Contacts = (function() {
             .st-contacts-list {
                 flex: 1;
                 overflow-y: auto;
-                padding: 0 20px 80px;
+                padding: 0 15px 80px;
             }
             .st-contact-item {
                 display: flex;
                 align-items: center;
-                padding: 14px 0;
+                padding: 12px 0;
                 border-bottom: 1px solid var(--pt-border, #e5e5e5);
                 cursor: pointer;
             }
@@ -177,47 +177,13 @@ window.STPhone.Apps.Contacts = (function() {
             }
             .st-contact-edit-textarea {
                 width: 100%;
-                border: 1px solid var(--pt-border, #e5e5e5);
-                background: var(--pt-card-bg, #f5f5f7);
+                border: none;
+                background: transparent;
                 color: var(--pt-text-color, #000);
                 font-size: 14px;
-                line-height: 1.5;
                 outline: none;
-                resize: vertical;
+                resize: none;
                 min-height: 80px;
-                border-radius: 12px;
-                padding: 14px 16px;
-                box-sizing: border-box;
-            }
-            /* 체크박스 옵션 스타일 */
-            .st-contact-checkbox-option {
-                display: flex;
-                align-items: flex-start;
-                gap: 12px;
-                padding: 16px 20px;
-            }
-            .st-contact-checkbox-option input[type="checkbox"] {
-                width: 18px;
-                height: 18px;
-                margin: 0;
-                margin-top: 2px;
-                accent-color: var(--pt-accent, #007aff);
-                cursor: pointer;
-                flex-shrink: 0;
-            }
-            .st-contact-checkbox-content {
-                flex: 1;
-            }
-            .st-contact-checkbox-title {
-                font-size: 14px;
-                font-weight: 500;
-                color: var(--pt-text-color, #1d1d1f);
-                margin-bottom: 4px;
-            }
-            .st-contact-checkbox-desc {
-                font-size: 12px;
-                color: var(--pt-sub-text, #86868b);
-                line-height: 1.4;
             }
         </style>
     `;
@@ -297,27 +263,24 @@ window.STPhone.Apps.Contacts = (function() {
     async function syncBotContact() {
         const charInfo = await getCharacterInfo();
         if (!charInfo || !charInfo.name) return null;
-
+        
         loadContacts();
         let botContact = contacts.find(c => c.id === BOT_CONTACT_ID);
-
-        // [NEW] 캐릭터별로 저장된 외모 태그 불러오기
-        const savedBotTags = loadBotTagsForCharacter();
-
+        
         if (!botContact) {
-            // 새로 생성 - 캐릭터별 저장된 태그가 있으면 복원
+            // 새로 생성
             botContact = {
                 id: BOT_CONTACT_ID,
                 name: charInfo.name,
                 avatar: charInfo.avatar || '',
                 persona: charInfo.description || '',
-                tags: savedBotTags || '',  // [FIX] 캐릭터별 저장된 태그 복원
+                tags: '',
                 isAutoSync: true,
                 createdAt: Date.now()
             };
             contacts.unshift(botContact); // 맨 앞에 추가
             saveContacts();
-            console.log('[Contacts] 봇 연락처 자동 생성:', charInfo.name, savedBotTags ? '(태그 복원됨)' : '');
+            console.log('[Contacts] 봇 연락처 자동 생성:', charInfo.name);
         } else {
             // 업데이트 (이름, 아바타, 설명 동기화)
             let updated = false;
@@ -334,12 +297,6 @@ window.STPhone.Apps.Contacts = (function() {
                     botContact.persona = charInfo.description;
                     updated = true;
                 }
-                // [NEW] 태그가 비어있고 캐릭터별 저장된 태그가 있으면 복원
-                if (!botContact.tags && savedBotTags) {
-                    botContact.tags = savedBotTags;
-                    updated = true;
-                    console.log('[Contacts] 봇 외모 태그 복원:', savedBotTags);
-                }
                 if (updated) {
                     saveContacts();
                     console.log('[Contacts] 봇 연락처 업데이트:', charInfo.name);
@@ -349,85 +306,25 @@ window.STPhone.Apps.Contacts = (function() {
         return botContact;
     }
 
-    // 페르소나에서 외모 태그 추출 (간단한 휴리스틱)
-    function extractAppearanceTags(persona) {
-        if (!persona) return '';
-
-        // 외모 관련 키워드 패턴
-        const appearancePatterns = [
-            /appearance:\s*([^\n]+)/i,
-            /looks:\s*([^\n]+)/i,
-            /외모:\s*([^\n]+)/i,
-            /생김새:\s*([^\n]+)/i,
-            /physical:\s*([^\n]+)/i,
-            /features:\s*([^\n]+)/i
-        ];
-
-        // 각 패턴을 시도
-        for (const pattern of appearancePatterns) {
-            const match = persona.match(pattern);
-            if (match && match[1]) {
-                return match[1].trim();
-            }
-        }
-
-        // 패턴이 없으면 전체 페르소나를 간단히 처리 (첫 50자만)
-        const lines = persona.split('\n').filter(l => l.trim());
-        if (lines.length > 0) {
-            // 첫 몇 줄에서 외모 관련 단어가 있는지 확인
-            for (const line of lines.slice(0, 3)) {
-                if (line.match(/hair|eye|height|skin|build|tall|short|slim|muscular/i) ||
-                    line.match(/머리|눈|키|피부|체격/)) {
-                    return line.substring(0, 100).trim();
-                }
-            }
-        }
-
-        return '';
-    }
-
     // 설정에서 유저 프로필 정보를 SillyTavern과 동기화
     async function syncUserProfileToSettings() {
         const userInfo = await getUserInfo();
         if (!userInfo || !userInfo.name) return;
-
+        
         const settings = window.STPhone.Apps?.Settings?.getSettings?.() || {};
-
-        // profileAutoSync가 활성화되어 있는 경우에만 자동 동기화
-        if (settings.profileAutoSync === false) {
-            console.log('[Contacts] 프로필 자동 동기화 비활성화됨');
-            return;
-        }
-
-        let updated = false;
-
+        
         // 설정의 프로필이 비어있으면 SillyTavern 정보로 채우기
         if (!settings.userName || settings.userName === 'User') {
             window.STPhone.Apps?.Settings?.updateSetting?.('userName', userInfo.name);
-            updated = true;
         }
         if (!settings.userPersonality && userInfo.persona) {
             window.STPhone.Apps?.Settings?.updateSetting?.('userPersonality', userInfo.persona);
-            updated = true;
         }
         if (!settings.userAvatar && userInfo.avatar) {
             window.STPhone.Apps?.Settings?.updateSetting?.('userAvatar', userInfo.avatar);
-            updated = true;
         }
-
-        // [NEW] 외모 태그 자동 추출 및 동기화
-        if (!settings.userTags && userInfo.persona) {
-            const extractedTags = extractAppearanceTags(userInfo.persona);
-            if (extractedTags) {
-                window.STPhone.Apps?.Settings?.updateSetting?.('userTags', extractedTags);
-                updated = true;
-                console.log('[Contacts] 외모 태그 자동 추출됨:', extractedTags);
-            }
-        }
-
-        if (updated) {
-            console.log('[Contacts] 설정 프로필에 유저 정보 동기화됨');
-        }
+        
+        console.log('[Contacts] 설정 프로필에 유저 정보 동기화됨');
     }
 
     // 모든 자동 연락처 동기화 (봇만)
@@ -444,37 +341,6 @@ window.STPhone.Apps.Contacts = (function() {
         // 캐릭터 ID 또는 이름을 기반으로 키 생성
         const charId = context.characterId !== undefined ? context.characterId : 'unknown';
         return 'st_phone_contacts_char_' + charId;
-    }
-
-    // [NEW] 봇 외모 태그 캐릭터별 저장 키
-    function getBotTagsStorageKey() {
-        const context = window.SillyTavern?.getContext?.();
-        if (!context?.characterId && !context?.characters) return null;
-        const charId = context.characterId !== undefined ? context.characterId : 'unknown';
-        return 'st_phone_bot_tags_' + charId;
-    }
-
-    // [NEW] 봇 외모 태그 캐릭터별로 저장
-    function saveBotTagsForCharacter(tags) {
-        const key = getBotTagsStorageKey();
-        if (!key) return;
-        try {
-            localStorage.setItem(key, tags || '');
-            console.log('[Contacts] 봇 외모 태그 캐릭터별 저장:', tags);
-        } catch (e) {
-            console.error('[Contacts] 봇 태그 저장 실패:', e);
-        }
-    }
-
-    // [NEW] 봇 외모 태그 캐릭터별로 로드
-    function loadBotTagsForCharacter() {
-        const key = getBotTagsStorageKey();
-        if (!key) return '';
-        try {
-            return localStorage.getItem(key) || '';
-        } catch (e) {
-            return '';
-        }
     }
 
     // [NEW] 캐릭터별로 연락처 저장
@@ -589,12 +455,6 @@ window.STPhone.Apps.Contacts = (function() {
         if (i >= 0) {
             contacts[i] = { ...contacts[i], ...data };
             saveContacts();
-
-            // [NEW] 봇 연락처의 태그가 수정되면 캐릭터별로 저장
-            if (id === BOT_CONTACT_ID && data.tags !== undefined) {
-                saveBotTagsForCharacter(data.tags);
-            }
-
             return contacts[i];
         }
         return null;
@@ -636,12 +496,12 @@ window.STPhone.Apps.Contacts = (function() {
 
         let listHtml = '';
         if (contacts.length === 0) {
-            listHtml = `<div class="st-contacts-empty"><div style="font-size:36px;opacity:0.4;margin-bottom:15px;"><i class="fa-regular fa-address-book"></i></div><div>연락처가 없습니다</div></div>`;
+            listHtml = `<div class="st-contacts-empty"><div style="font-size:48px;opacity:0.5;margin-bottom:15px;">👤</div><div>연락처가 없습니다</div></div>`;
         } else {
             contacts.forEach(c => {
                 // 자동 동기화 연락처 표시 (봇만 해당)
                 const isAutoContact = c.id === BOT_CONTACT_ID;
-                const syncBadge = isAutoContact ? '<span style="font-size:10px;font-weight:600;background:#1d1d1f;color:white;padding:2px 6px;border-radius:8px;margin-left:6px;">자동</span>' : '';
+                const syncBadge = isAutoContact ? '<span style="font-size:10px;background:#007aff;color:white;padding:2px 5px;border-radius:8px;margin-left:5px;">자동</span>' : '';
                 
                 listHtml += `
                     <div class="st-contact-item" data-id="${c.id}">
@@ -651,8 +511,8 @@ window.STPhone.Apps.Contacts = (function() {
                             <div class="st-contact-preview">${c.persona?.substring(0, 30) || ''}</div>
                         </div>
                         <div class="st-contact-actions">
-                            <button class="st-contact-action-btn msg" data-action="msg" data-id="${c.id}"><i class="fa-regular fa-comment"></i></button>
-                            <button class="st-contact-action-btn call" data-action="call" data-id="${c.id}"><i class="fa-solid fa-phone"></i></button>
+                            <button class="st-contact-action-btn msg" data-action="msg" data-id="${c.id}">💬</button>
+                            <button class="st-contact-action-btn call" data-action="call" data-id="${c.id}">📞</button>
                         </div>
                     </div>`;
             });
@@ -664,7 +524,7 @@ window.STPhone.Apps.Contacts = (function() {
                 <div class="st-contacts-header">연락처</div>
                 <input class="st-contacts-search" id="st-contacts-search" placeholder="검색">
                 <div class="st-contacts-list">${listHtml}</div>
-                <button class="st-contacts-fab" id="st-contacts-add"><i class="fa-solid fa-plus"></i></button>
+                <button class="st-contacts-fab" id="st-contacts-add">+</button>
             </div>
         `);
 
@@ -696,13 +556,13 @@ window.STPhone.Apps.Contacts = (function() {
         
         // 자동 동기화 연락처용 안내 메시지 (봇만 해당)
         const autoSyncNotice = isAutoContact ? `
-            <div class="st-contact-edit-group">
-                <div class="st-contact-checkbox-option">
-                    <input type="checkbox" id="st-edit-autosync" ${autoSyncEnabled ? 'checked' : ''}>
-                    <div class="st-contact-checkbox-content">
-                        <div class="st-contact-checkbox-title">자동 동기화</div>
-                        <div class="st-contact-checkbox-desc">SillyTavern 캐릭터와 자동으로 연동합니다.</div>
+            <div class="st-contact-edit-group" style="background:rgba(52,199,89,0.1); margin-bottom:15px;">
+                <div class="st-contact-edit-row" style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <div class="st-contact-edit-label" style="color:var(--pt-text-color); font-weight:600;">🔄 자동 동기화</div>
+                        <div style="font-size:11px; color:var(--pt-sub-text);">SillyTavern 캐릭터와 자동 연동</div>
                     </div>
+                    <input type="checkbox" class="st-switch" id="st-edit-autosync" ${autoSyncEnabled ? 'checked' : ''}>
                 </div>
             </div>
         ` : '';
@@ -740,30 +600,13 @@ window.STPhone.Apps.Contacts = (function() {
                         </div>
                     </div>
                     <!-- [NEW] 캐릭터별 연락처 저장 체크박스 -->
-                    <div class="st-contact-edit-group">
-                        <div class="st-contact-checkbox-option">
-                            <input type="checkbox" id="st-edit-persist" ${c?.persistForChar ? 'checked' : ''}>
-                            <div class="st-contact-checkbox-content">
-                                <div class="st-contact-checkbox-title">새 채팅에도 유지</div>
-                                <div class="st-contact-checkbox-desc">같은 캐릭터의 새 채팅방에서도 이 연락처를 유지합니다.</div>
+                    <div class="st-contact-edit-group" style="background:rgba(0,122,255,0.1);">
+                        <div class="st-contact-edit-row" style="display:flex; align-items:center; justify-content:space-between;">
+                            <div>
+                                <div class="st-contact-edit-label" style="color:var(--pt-text-color); font-weight:600;">🔒 새 채팅에도 유지</div>
+                                <div style="font-size:11px; color:var(--pt-sub-text);">같은 캐릭터의 새 채팅방에서도 이 연락처 유지</div>
                             </div>
-                        </div>
-                    </div>
-                    <!-- [NEW] 선제 기능 비활성화 체크박스 -->
-                    <div class="st-contact-edit-group">
-                        <div class="st-contact-checkbox-option">
-                            <input type="checkbox" id="st-edit-disable-proactive-msg" ${c?.disableProactiveMessage ? 'checked' : ''}>
-                            <div class="st-contact-checkbox-content">
-                                <div class="st-contact-checkbox-title">선제 메시지 비활성화</div>
-                                <div class="st-contact-checkbox-desc">이 연락처에서 먼저 문자를 보내지 않습니다.</div>
-                            </div>
-                        </div>
-                        <div class="st-contact-checkbox-option" style="border-top: 1px solid var(--pt-border, #e5e5e5);">
-                            <input type="checkbox" id="st-edit-disable-proactive-call" ${c?.disableProactiveCall ? 'checked' : ''}>
-                            <div class="st-contact-checkbox-content">
-                                <div class="st-contact-checkbox-title">선제 전화 비활성화</div>
-                                <div class="st-contact-checkbox-desc">이 연락처에서 먼저 전화를 걸지 않습니다.</div>
-                            </div>
+                            <input type="checkbox" class="st-switch" id="st-edit-persist" ${c?.persistForChar ? 'checked' : ''}>
                         </div>
                     </div>
                     <button id="st-edit-save" style="width:100%;padding:15px;border:none;border-radius:12px;background:var(--pt-accent,#007aff);color:white;font-size:16px;cursor:pointer;">저장</button>                </div>
@@ -834,17 +677,13 @@ $('#st-edit-avatar-file').on('change', function(e) {
             if (!name) { toastr.warning('이름을 입력하세요'); return; }
             const persistForChar = $('#st-edit-persist').is(':checked');
             const isAutoSync = $('#st-edit-autosync').length ? $('#st-edit-autosync').is(':checked') : undefined;
-            const disableProactiveMessage = $('#st-edit-disable-proactive-msg').is(':checked');
-            const disableProactiveCall = $('#st-edit-disable-proactive-call').is(':checked');
-
+            
             const data = {
                 name,
                 avatar: $('#st-edit-avatar').attr('src'),
                 persona: $('#st-edit-persona').val().trim(),
                 tags: $('#st-edit-tags').val().trim(),
-                persistForChar: persistForChar,  // [NEW] 캐릭터별 유지 여부
-                disableProactiveMessage: disableProactiveMessage,  // [NEW] 선제 메시지 비활성화
-                disableProactiveCall: disableProactiveCall  // [NEW] 선제 전화 비활성화
+                persistForChar: persistForChar  // [NEW] 캐릭터별 유지 여부
             };
             
             // 자동 동기화 연락처의 경우 isAutoSync 옵션 저장
