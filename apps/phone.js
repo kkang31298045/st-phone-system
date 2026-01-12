@@ -677,6 +677,13 @@ window.STPhone.Apps.Phone = (function() {
         const contact = window.STPhone.Apps?.Contacts?.getContact(contactId);
         if (!contact) { toastr.error('연락처를 찾을 수 없습니다'); return; }
 
+        // [차단 체크] - 차단된 연락처에게는 전화 불가
+        const Settings = window.STPhone.Apps?.Settings;
+        if (Settings && typeof Settings.isBlocked === 'function' && Settings.isBlocked(contactId)) {
+            toastr.error(`${contact.name}님에게 차단되어 전화를 걸 수 없습니다.`, '차단됨');
+            return;
+        }
+
         // [수정됨] 설정 앱(Settings)에 저장된 내 이름("오타쿠")을 가져오는 마법의 코드
         let userName = 'User';
         if (window.SillyTavern && window.SillyTavern.getContext) {

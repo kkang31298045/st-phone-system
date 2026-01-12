@@ -230,6 +230,7 @@ const EXTENSION_NAME = 'ST Phone System';
             /^\s*\[⏰/i,           // [NEW] 타임스탬프 로그 숨기기 (Time Skip)
             /^\s*\[💰/i,          // [NEW] 은행 송금/잔액 로그 숨기기 (시작 부분)
             /^\s*\[📺/i,          // [NEW] Fling 스트리밍 로그 숨기기
+            /^\s*\(System:/i,     // [NEW] 시스템 로그 메시지 숨기기 (읽씹/안읽씹 등)
         ];
 
         // 패턴 중 하나라도 맞으면 CSS 숨김 클래스 부여
@@ -239,6 +240,37 @@ const EXTENSION_NAME = 'ST Phone System';
             node.classList.add('st-phone-hidden-log');
             // 혹시 모르니 style 속성으로도 이중 잠금
             node.style.display = 'none';
+        }
+
+        // [차단 해제 감지] - 확장 밖 채팅에서 캐릭터가 차단 해제 언급하면 자동 해제
+        checkForUnblock(node, text);
+    }
+
+    // [NEW] 차단 해제 감지 함수
+    function checkForUnblock(node, text) {
+        // 유저 메시지는 무시 (캐릭터 메시지만 체크)
+        if (node.classList.contains('mes-user')) return;
+
+        // [UNBLOCK] 태그만 감지 (정확한 태그 사용 필수)
+        if (!text.includes('[UNBLOCK]')) return;
+
+        // 캐릭터 이름 추출
+        const nameDiv = node.querySelector('.name_text');
+        if (!nameDiv) return;
+        const charName = nameDiv.innerText.trim();
+
+        // 해당 캐릭터가 차단 목록에 있는지 확인
+        const Settings = window.STPhone?.Apps?.Settings;
+        if (!Settings || typeof Settings.getBlockedContacts !== 'function') return;
+
+        const blocked = Settings.getBlockedContacts();
+        const blockedContact = blocked.find(b => b.name === charName);
+
+        if (blockedContact) {
+            // 차단 해제
+            Settings.unblockContact(blockedContact.id);
+            toastr.success(`${charName}님이 차단을 해제했습니다. 이제 연락할 수 있습니다.`, '차단 해제');
+            console.log(`✅ [Index] ${charName} 차단 해제 감지됨`);
         }
     }
 

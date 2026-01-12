@@ -410,7 +410,19 @@ window.STPhone.Apps.Store = (function() {
             version: '1.0.0',
             size: '0.7 MB',
             icon: '📺'
+        },
+        // #IG_START - Instagram 앱 등록
+        {
+            id: 'instagram',
+            name: 'Instagram',
+            bg: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)',
+            category: 'SNS',
+            description: 'AI 기반 인스타그램! 캐릭터가 자동으로 포스팅하고, 댓글을 달고, 좋아요를 누릅니다.',
+            version: '1.0.0',
+            size: '1.5 MB',
+            icon: '<i class="fa-brands fa-instagram" style="font-size: 28px; color: white;"></i>'
         }
+        // #IG_END
     ];
 
     let installedApps = [];
@@ -734,9 +746,38 @@ window.STPhone.Apps.Store = (function() {
         });
     }
 
-    function openInstalledApp(appId) {
+    // #IG_START - openInstalledApp에 retry 로직 추가 (비동기 로드 대응)
+    function openInstalledApp(appId, retryCount = 0) {
         // 스토어 앱들의 실제 기능 실행
         const Apps = window.STPhone.Apps;
+
+        // 앱 이름 매핑 (appId -> Apps 객체 키)
+        const appNameMap = {
+            'notes': 'Notes',
+            'weather': 'Weather',
+            'music': 'Music',
+            'games': 'Games',
+            'calendar': 'Calendar',
+            'theme': 'Theme',
+            'bank': 'Bank',
+            'streaming': 'Streaming',
+            'instagram': 'Instagram'
+        };
+
+        const appName = appNameMap[appId];
+        
+        // 앱 모듈이 아직 로드되지 않았으면 재시도
+        if (appName && !Apps[appName]) {
+            if (retryCount < 5) {
+                console.log(`[Store] ${appName} 앱 로딩 대기 중... (${retryCount + 1}/5)`);
+                setTimeout(() => openInstalledApp(appId, retryCount + 1), 300);
+                return;
+            } else {
+                toastr.error('앱을 로드하는 데 실패했습니다. 페이지를 새로고침해 주세요.');
+                return;
+            }
+        }
+        // #IG_END
 
         switch(appId) {
             case 'notes':
@@ -763,6 +804,11 @@ window.STPhone.Apps.Store = (function() {
             case 'streaming':
                 Apps.Streaming?.open();
                 break;
+            // #IG_START - Instagram 앱 열기 case 추가
+            case 'instagram':
+                Apps.Instagram?.open();
+                break;
+            // #IG_END
             default:
                 toastr.warning('앱을 찾을 수 없습니다.');
         }

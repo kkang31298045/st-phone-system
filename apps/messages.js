@@ -1061,9 +1061,46 @@ function getTranslationStorageKey() {
         return all[contactId] || [];
     }
 
+// #IG_START - Instagram/SNS 태그 제거 함수 (메시지 저장 전 정리)
+function stripInstagramTags(text) {
+    if (!text) return text;
+    let cleaned = text;
+    // [IG_POST]...[/IG_POST] 제거
+    cleaned = cleaned.replace(/\[IG_POST\][\s\S]*?\[\/IG_POST\]/gi, '');
+    // [IG_REPLY]...[/IG_REPLY] 제거
+    cleaned = cleaned.replace(/\[IG_REPLY\][\s\S]*?\[\/IG_REPLY\]/gi, '');
+    // [IG_COMMENT]...[/IG_COMMENT] 제거
+    cleaned = cleaned.replace(/\[IG_COMMENT\][\s\S]*?\[\/IG_COMMENT\]/gi, '');
+    // 불완전한 태그 제거 (시작/끝만 있는 경우)
+    cleaned = cleaned.replace(/\[IG_POST\][^\[]*/gi, '');
+    cleaned = cleaned.replace(/[^\]]*\[\/IG_POST\]/gi, '');
+    cleaned = cleaned.replace(/\[IG_REPLY\][^\[]*/gi, '');
+    cleaned = cleaned.replace(/[^\]]*\[\/IG_REPLY\]/gi, '');
+    cleaned = cleaned.replace(/\[IG_COMMENT\][^\[]*/gi, '');
+    cleaned = cleaned.replace(/[^\]]*\[\/IG_COMMENT\]/gi, '');
+    // 괄호 형식 제거
+    cleaned = cleaned.replace(/\(Instagram:\s*"[^"]+"\)/gi, '');
+    cleaned = cleaned.replace(/\(Instagram Reply:\s*"[^"]+"\)/gi, '');
+    // 레거시 패턴 제거
+    cleaned = cleaned.replace(/\[Instagram 포스팅\][^\n]*/gi, '');
+    cleaned = cleaned.replace(/\[Instagram 답글\][^\n]*/gi, '');
+    cleaned = cleaned.replace(/\[Instagram 댓글\][^\n]*/gi, '');
+    // [reply] 태그 제거 (답장 마커)
+    cleaned = cleaned.replace(/\[reply\]/gi, '');
+    cleaned = cleaned.replace(/\[REPLY\s*[^\]]*\]/gi, '');
+    // 연속 공백/줄바꿈 정리
+    cleaned = cleaned.replace(/\n\s*\n/g, '\n').trim();
+    return cleaned;
+}
+// #IG_END
+
 function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = false, rpDate = null, replyTo = null) {
     const all = loadAllMessages();
     if (!all[contactId]) all[contactId] = [];
+
+    // #IG_START - Instagram 태그 제거 (저장 전 정리)
+    const cleanedText = stripInstagramTags(text);
+    // #IG_END
 
     const newMsgIndex = all[contactId].length;
     if (addTimestamp) saveTimestamp(contactId, newMsgIndex, Date.now());
@@ -1073,7 +1110,7 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
 
     const msgData = {
         sender,
-        text,
+        text: cleanedText,  // #IG - Instagram 태그 제거된 텍스트 사용
         image: imageUrl,
         timestamp: Date.now(),
         rpDate: rpDate || rpDateStr,
@@ -1309,6 +1346,42 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
     }
 
     async function receiveMessageSequential(contactId, text, contactName, myName, replyTo = null) {
+        // #IG_START - 줄 단위 처리 전에 전체 텍스트에서 Instagram 태그 먼저 처리
+        const Instagram = window.STPhone?.Apps?.Instagram;
+
+        if (Instagram) {
+            // [IG_POST] 태그 처리 (전체 텍스트에서)
+            const igPostMatch = text.match(/\[IG_POST\]([\s\S]*?)\[\/IG_POST\]/i);
+            if (igPostMatch) {
+                const caption = igPostMatch[1].trim();
+                if (typeof Instagram.createPostFromChat === 'function') {
+                    Instagram.createPostFromChat(contactName, caption);
+                }
+                text = text.replace(/\[IG_POST\][\s\S]*?\[\/IG_POST\]/gi, '').trim();
+            }
+
+            // [IG_REPLY] 태그 처리 (전체 텍스트에서)
+            const igReplyMatch = text.match(/\[IG_REPLY\]([\s\S]*?)\[\/IG_REPLY\]/i);
+            if (igReplyMatch) {
+                const replyContent = igReplyMatch[1].trim();
+                if (typeof Instagram.addReplyFromChat === 'function') {
+                    Instagram.addReplyFromChat(contactName, replyContent);
+                }
+                text = text.replace(/\[IG_REPLY\][\s\S]*?\[\/IG_REPLY\]/gi, '').trim();
+            }
+
+            // [IG_COMMENT] 태그 처리 (전체 텍스트에서)
+            const igCommentMatch = text.match(/\[IG_COMMENT\]([\s\S]*?)\[\/IG_COMMENT\]/i);
+            if (igCommentMatch) {
+                const commentContent = igCommentMatch[1].trim();
+                if (typeof Instagram.addCommentFromChat === 'function') {
+                    Instagram.addCommentFromChat(contactName, commentContent);
+                }
+                text = text.replace(/\[IG_COMMENT\][\s\S]*?\[\/IG_COMMENT\]/gi, '').trim();
+            }
+        }
+        // #IG_END
+
         const lines = text.split('\n').filter(l => l.trim());
         if (lines.length === 0) return;
 
@@ -1325,6 +1398,82 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
         for (let i = 0; i < lines.length; i++) {
             let lineText = lines[i].trim();
             if (!lineText) continue;
+
+            // #IG_START - Instagram 포스팅/답글/댓글 패턴 감지 및 제거 (줄 단위 - 하위 호환)
+            if (window.STPhone.Apps?.Instagram) {
+                const InstagramLine = window.STPhone.Apps.Instagram;
+
+                // [IG_POST] 태그 및 불완전한 조각 제거
+                if (lineText.includes('[IG_POST]') || lineText.includes('[/IG_POST]')) {
+                    lineText = lineText.replace(/\[IG_POST\][\s\S]*?\[\/IG_POST\]/gi, '').trim();
+                    lineText = lineText.replace(/\[IG_POST\][^\[]*/gi, '').trim();
+                    lineText = lineText.replace(/[^\]]*\[\/IG_POST\]/gi, '').trim();
+                }
+
+                // [IG_REPLY] 태그 및 불완전한 조각 제거
+                if (lineText.includes('[IG_REPLY]') || lineText.includes('[/IG_REPLY]')) {
+                    lineText = lineText.replace(/\[IG_REPLY\][\s\S]*?\[\/IG_REPLY\]/gi, '').trim();
+                    lineText = lineText.replace(/\[IG_REPLY\][^\[]*/gi, '').trim();
+                    lineText = lineText.replace(/[^\]]*\[\/IG_REPLY\]/gi, '').trim();
+                }
+
+                // [IG_COMMENT] 태그 및 불완전한 조각 제거
+                if (lineText.includes('[IG_COMMENT]') || lineText.includes('[/IG_COMMENT]')) {
+                    lineText = lineText.replace(/\[IG_COMMENT\][\s\S]*?\[\/IG_COMMENT\]/gi, '').trim();
+                    lineText = lineText.replace(/\[IG_COMMENT\][^\[]*/gi, '').trim();
+                    lineText = lineText.replace(/[^\]]*\[\/IG_COMMENT\]/gi, '').trim();
+                }
+
+                // 빈 줄이면 스킵
+                if (!lineText) continue;
+
+                // 괄호 형식: (Instagram: "캡션")
+                if (lineText.includes('(Instagram:')) {
+                    const postMatch = lineText.match(/\(Instagram:\s*"([^"]+)"\)/i);
+                    if (postMatch && typeof InstagramLine.createPostFromChat === 'function') {
+                        InstagramLine.createPostFromChat(contactName, postMatch[1]);
+                    }
+                    lineText = lineText.replace(/\(Instagram:\s*"[^"]+"\)/gi, '').trim();
+                }
+
+                // 새 패턴: (Instagram Reply: "답글")
+                if (lineText.includes('(Instagram Reply:')) {
+                    const replyMatch = lineText.match(/\(Instagram Reply:\s*"([^"]+)"\)/i);
+                    if (replyMatch && typeof InstagramLine.addReplyFromChat === 'function') {
+                        InstagramLine.addReplyFromChat(contactName, replyMatch[1]);
+                    }
+                    lineText = lineText.replace(/\(Instagram Reply:\s*"[^"]+"\)/gi, '').trim();
+                }
+
+                // 기존 패턴들도 유지 (하위 호환)
+                if (lineText.includes('[Instagram 포스팅]')) {
+                    const postMatch = lineText.match(/\[Instagram 포스팅\][^"]*"([^"]+)"/i);
+                    if (postMatch && typeof InstagramLine.createPostFromChat === 'function') {
+                        InstagramLine.createPostFromChat(contactName, postMatch[1]);
+                    }
+                    lineText = lineText.replace(/\[Instagram 포스팅\][^\n]*/gi, '').trim();
+                }
+
+                if (lineText.includes('[Instagram 답글]')) {
+                    const replyMatch = lineText.match(/\[Instagram 답글\][^"]*"([^"]+)"/i);
+                    if (replyMatch && typeof InstagramLine.addReplyFromChat === 'function') {
+                        InstagramLine.addReplyFromChat(contactName, replyMatch[1]);
+                    }
+                    lineText = lineText.replace(/\[Instagram 답글\][^\n]*/gi, '').trim();
+                }
+
+                // 댓글 패턴도 처리 (제거 + Instagram 호출)
+                if (lineText.includes('[Instagram 댓글]')) {
+                    const commentMatch = lineText.match(/\[Instagram 댓글\][^"]*"([^"]+)"/i);
+                    if (commentMatch && typeof InstagramLine.addCommentFromChat === 'function') {
+                        InstagramLine.addCommentFromChat(contactName, commentMatch[1]);
+                    }
+                    lineText = lineText.replace(/\[Instagram 댓글\][^\n]*/gi, '').trim();
+                }
+
+                if (!lineText) continue;
+            }
+            // #IG_END
 
             const calendarInstalled = window.STPhone?.Apps?.Store?.isInstalled?.('calendar');
             const rpDateInfo = calendarInstalled ? extractRpDate(lineText) : null;
@@ -1424,7 +1573,10 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
     }
 
     async function receiveMessage(contactId, text, imageUrl = null, replyTo = null) {
-        const newIdx = addMessage(contactId, 'them', text, imageUrl, false, null, replyTo);
+        // #IG_START - Instagram 태그 제거 (저장 + 렌더링 모두 정리된 텍스트 사용)
+        const cleanedText = stripInstagramTags(text);
+        // #IG_END
+        const newIdx = addMessage(contactId, 'them', cleanedText, imageUrl, false, null, replyTo);
 
         const isPhoneActive = $('#st-phone-container').hasClass('active');
         const isViewingThisChat = (currentChatType === 'dm' && currentContactId === contactId);
@@ -1439,8 +1591,8 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
         const settings = window.STPhone.Apps?.Settings?.getSettings?.() || {};
         let translatedText = null;
 
-        if (text && settings.translateEnabled) {
-            translatedText = await translateText(text);
+        if (cleanedText && settings.translateEnabled) {  // #IG - cleanedText 사용
+            translatedText = await translateText(cleanedText);
             if (translatedText) {
                 saveTranslation(contactId, newIdx, translatedText);
             }
@@ -1448,7 +1600,7 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
 
         // 채팅방 보고 있으면 말풍선 추가
         if (isPhoneActive && isViewingThisChat) {
-            appendBubble('them', text, imageUrl, newIdx, translatedText, replyTo);
+            appendBubble('them', cleanedText, imageUrl, newIdx, translatedText, replyTo);  // #IG - cleanedText 사용
         }
 
         // 채팅방 안 보고 있을 때만 알림
@@ -1461,12 +1613,12 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
             let preview;
             if (imageUrl) {
                 preview = '사진';
-            } else if (/\[💰.*송금.*:/.test(text)) {
+            } else if (/\[💰.*송금.*:/.test(cleanedText)) {  // #IG - cleanedText 사용
                 preview = '💰 송금 알림';
-            } else if (/\[💰.*출금.*:/.test(text)) {
+            } else if (/\[💰.*출금.*:/.test(cleanedText)) {  // #IG - cleanedText 사용
                 preview = '💰 결제 알림';
             } else {
-                preview = (translatedText || text)?.substring(0, 50) || '새 메시지';
+                preview = (translatedText || cleanedText)?.substring(0, 50) || '새 메시지';  // #IG - cleanedText 사용
             }
             showNotification(contactName, preview, contactAvatar, contactId, 'dm');
         }
@@ -1812,6 +1964,10 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
         let lastRenderedRpDate = null;
 
         msgs.forEach((m, index) => {
+            // #IG_START - 저장된 메시지에 Instagram 태그가 남아있으면 제거
+            const displayText = m.text ? stripInstagramTags(m.text) : '';
+            // #IG_END
+
             const customTsForIndex = customTimestamps.filter(t => t.beforeMsgIndex === index);
             customTsForIndex.forEach(ts => {
                 msgsHtml += getCustomTimestampHtml(ts.text, ts.id);
@@ -1860,17 +2016,17 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
                 const imgAttr = `data-action="msg-option" data-idx="${index}" data-line-idx="0" data-sender="${side}" class="st-msg-bubble ${side} image-bubble clickable" style="cursor:pointer;" title="옵션 보기"`;
                 msgsHtml += `<div ${imgAttr}><img class="st-msg-image" src="${m.image}">${excludedTag}</div>`;
 
-                if (!m.text && settings.readReceiptEnabled && side === 'me' && m.read === false) {
+                if (!displayText && settings.readReceiptEnabled && side === 'me' && m.read === false) {  // #IG - displayText 사용
                      msgsHtml += `<span class="st-msg-unread-marker" style="bottom: 10px;">1</span>`;
                 }
             }
 
-            if (m.text) {
+            if (displayText) {  // #IG - displayText 사용
                 if (isDeleted) {
                     const lineAttr = `data-action="msg-option" data-idx="${index}" data-line-idx="0" data-sender="${side}" class="st-msg-bubble ${side}${deletedClass} clickable" style="cursor:pointer;" title="옵션 보기"`;
-                    msgsHtml += `<div ${lineAttr}>${m.text}${excludedTag}</div>`;
+                    msgsHtml += `<div ${lineAttr}>${displayText}${excludedTag}</div>`;  // #IG - displayText 사용
                 } else {
-                    const lines = m.text.split('\n');
+                    const lines = displayText.split('\n');  // #IG - displayText 사용
                     const translatedLines = savedTranslation ? savedTranslation.split('\n') : [];
                     let lineIdx = 0;
 
@@ -1933,12 +2089,19 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
                     </div>
                 </div>
 
-                <div class="st-chat-input-area">
+                <div class="st-chat-input-area" id="st-chat-input-area">
                     <button class="st-chat-cam-btn" id="st-chat-cam"><i class="fa-solid fa-camera"></i></button>
                     <button class="st-chat-timestamp-btn" id="st-chat-timestamp" title="타임스탬프 추가"><i class="fa-regular fa-clock"></i></button>
                     <textarea class="st-chat-textarea" id="st-chat-input" placeholder="메시지" rows="1"></textarea>
                     ${settings.translateEnabled ? '<button class="st-chat-translate-user-btn" id="st-chat-translate-user" title="영어로 번역"><i class="fa-solid fa-language"></i></button>' : ''}
                     <button class="st-chat-send" id="st-chat-send"><i class="fa-solid fa-arrow-up"></i></button>
+                </div>
+
+                <div class="st-blocked-banner" id="st-blocked-banner" style="display:none;">
+                    <div style="text-align:center; padding: 15px; background: linear-gradient(135deg, #ff4757, #ff6b81); color: white; font-weight: 600;">
+                        <i class="fa-solid fa-ban" style="margin-right: 8px;"></i>
+                        <span id="st-blocked-name"></span>님에게 차단되어 메시지를 보낼 수 없습니다.
+                    </div>
                 </div>
 
                 <div class="st-photo-popup" id="st-photo-popup">
@@ -2002,6 +2165,21 @@ function addMessage(contactId, sender, text, imageUrl = null, addTimestamp = fal
     }
 
     function attachChatListeners(contactId, contact) {
+        // [차단 상태 체크 및 UI 업데이트]
+        const Settings = window.STPhone.Apps?.Settings;
+        const isBlocked = Settings && typeof Settings.isBlocked === 'function' && Settings.isBlocked(contactId);
+
+        if (isBlocked) {
+            // 차단된 경우: 입력창 숨기고 차단 배너 표시
+            $('#st-chat-input-area').hide();
+            $('#st-blocked-banner').show();
+            $('#st-blocked-name').text(contact?.name || '상대방');
+        } else {
+            // 차단 안 된 경우: 정상 표시
+            $('#st-chat-input-area').show();
+            $('#st-blocked-banner').hide();
+        }
+
         $('#st-chat-back').off('click').on('click', open);
 
         $('#st-chat-messages').off('click', '[data-action="msg-option"]').on('click', '[data-action="msg-option"]', function(e) {
@@ -2121,6 +2299,10 @@ $('#st-chat-cam').off('click').on('click', () => {
         let msgsHtml = '';
 
         msgs.forEach((m, index) => {
+            // #IG_START - 저장된 메시지에 Instagram 태그가 남아있으면 제거
+            const displayTextGroup = m.text ? stripInstagramTags(m.text) : '';
+            // #IG_END
+
             // 커스텀 타임스탬프 표시 (해당 메시지 인덱스 전에 위치한 것들)
             const customTsForIndex = customTimestamps.filter(t => t.beforeMsgIndex === index);
             customTsForIndex.forEach(ts => {
@@ -2135,8 +2317,8 @@ $('#st-chat-cam').off('click').on('click', () => {
                 if (m.image) {
                     msgsHtml += `<div class="st-msg-bubble me"><img class="st-msg-image" src="${m.image}"></div>`;
                 }
-                if (m.text) {
-                    msgsHtml += `<div class="st-msg-bubble me">${m.text}</div>`;
+                if (displayTextGroup) {  // #IG - displayTextGroup 사용
+                    msgsHtml += `<div class="st-msg-bubble me">${displayTextGroup}</div>`;  // #IG - displayTextGroup 사용
                 }
                 msgsHtml += `</div>`;
             } else {
@@ -2155,8 +2337,8 @@ $('#st-chat-cam').off('click').on('click', () => {
                 if (m.image) {
                     msgsHtml += `<div class="st-msg-bubble them"><img class="st-msg-image" src="${m.image}"></div>`;
                 }
-                if (m.text) {
-                    msgsHtml += `<div class="st-msg-bubble them">${m.text}</div>`;
+                if (displayTextGroup) {  // #IG - displayTextGroup 사용
+                    msgsHtml += `<div class="st-msg-bubble them">${displayTextGroup}</div>`;  // #IG - displayTextGroup 사용
                 }
                 msgsHtml += `</div>`;
             }
@@ -2310,6 +2492,12 @@ $('#st-chat-cam').on('click', () => {
     }
 
     function appendBubble(sender, text, imageUrl, msgIndex, translatedText = null, replyTo = null) {
+        // #IG_START - 안전장치: Instagram 태그가 혹시 남아있으면 제거
+        if (text) {
+            text = stripInstagramTags(text);
+        }
+        // #IG_END
+
         const side = sender === 'me' ? 'me' : 'them';
         const $container = $('#st-chat-messages');
         const settings = window.STPhone.Apps?.Settings?.getSettings?.() || {};
@@ -2385,6 +2573,12 @@ $('#st-chat-cam').on('click', () => {
 
 
     function appendGroupBubble(senderId, senderName, text, imageUrl) {
+        // #IG_START - 안전장치: Instagram 태그가 혹시 남아있으면 제거
+        if (text) {
+            text = stripInstagramTags(text);
+        }
+        // #IG_END
+
         const myName = getUserName();
         const isMe = (senderName === myName || senderId === 'me');
         const $container = $('#st-chat-messages');
@@ -2591,6 +2785,14 @@ ${prefill ? `Start your response with: ${prefill}` : ''}`;
     async function sendMessage() {
         let text = $('#st-chat-input').val().trim();
         if (!text || !currentContactId) return;
+
+        // [차단 체크] - 차단된 연락처에게는 메시지 전송 불가
+        const Settings = window.STPhone.Apps?.Settings;
+        if (Settings && typeof Settings.isBlocked === 'function' && Settings.isBlocked(currentContactId)) {
+            const contact = window.STPhone.Apps.Contacts.getContact(currentContactId);
+            toastr.error(`${contact?.name || '상대방'}님에게 차단되어 메시지를 보낼 수 없습니다.`, '차단됨');
+            return;
+        }
 
         if (text.startsWith('/photo') || text.startsWith('/사진')) {
             const prompt = text.replace(/^\/(photo|사진)\s*/i, '');
@@ -2886,6 +3088,38 @@ If you want to ignore, reply ONLY with: [IGNORE]`;
                 }
             } catch (bankErr) {}
 
+            // #IG_START - Instagram 프롬프트 (설치 + 활성화된 경우에만)
+            let instagramPrompt = '';
+            try {
+                const Store = window.STPhone?.Apps?.Store;
+                const Settings = window.STPhone?.Apps?.Settings;
+                const currentSettings = Settings?.getSettings?.() || {};
+
+                // 인스타그램 앱 설치됨 + 자동 포스팅 활성화된 경우에만 프롬프트 주입
+                if (Store && typeof Store.isInstalled === 'function' && Store.isInstalled('instagram') && currentSettings.instagramPostEnabled !== false) {
+                    const savedPrompt = currentSettings.instagramPrompt;
+                    if (savedPrompt) {
+                        instagramPrompt = savedPrompt;
+                    } else {
+                        // 기본값 사용
+                        instagramPrompt = `### 📸 Instagram Posting
+To post on Instagram, append this tag at the END of your message:
+[IG_POST]Your caption here in Korean[/IG_POST]
+
+Example: "오늘 날씨 좋다~ [IG_POST]오늘 카페에서 작업 중! ☕️[/IG_POST]"
+
+Rules:
+- Only post when it makes sense (sharing moments, achievements, etc.)
+- Caption should be casual and short (1-2 sentences, Korean)
+- Do NOT include hashtags
+- Do NOT post every message - only when naturally appropriate`;
+                    }
+                }
+            } catch (igErr) {
+                console.warn('[Messages] Instagram 프롬프트 로드 실패(무시됨):', igErr);
+            }
+            // #IG_END
+
             const messages = [];
 
             // 1. 기본 시스템 정보 (안읽씹 내용 없음)
@@ -2900,6 +3134,7 @@ Personality: ${settings.userPersonality || '(not specified)'}
 ${systemPrompt}
 ${calendarEventsPrompt}
 ${bankPrompt}
+${instagramPrompt}
 
 ### Instructions
 You are ${contact.name} responding to a text message from ${myName}.
@@ -2930,17 +3165,63 @@ Reply naturally based on the conversation history below.`;
                 messages.push(...tempHistory.reverse());
             }
 
-            // 3. [핵심] 안읽씹/읽씹 지령 (히스토리 끝나고, 유저 말 직전에 주입)
+            // 3. [핵심] 안읽씹/읽씹/차단 지령 (히스토리 끝나고, 유저 말 직전에 주입) - readReceiptEnabled 켜져있을 때만!
             if (settings.readReceiptEnabled) {
                 // system role로 한번 더 강조하여 보냄 (AI가 가장 최근 지시로 인식함)
                 messages.push({
                     role: 'system',
 
-                    content: `[IMPORTANT INSTRUCTION]
-1. [UNREAD(안읽씹)]: If appropriate based on context (busy/sleeping/angry), you MUST reply ONLY with: [UNREAD]
-2. [IGNORE(읽씹)]: If you read the message but will NOT reply, reply ONLY with: [IGNORE]
-3. Otherwise, reply normally with text.
-(Do not output explanation, just the tag if needed)`
+                    content: `### [📵 READ RECEIPT SYSTEM - MANDATORY]
+Before responding, you MUST first decide: Will you even look at this message?
+
+**STEP 1: Should you even CHECK the notification?**
+Ask yourself: "Do I want to open this message right now?"
+- If NO → Output ONLY: [UNREAD] (message stays unread, user sees "1")
+- If YES → Go to Step 2
+
+**When to use [UNREAD]:**
+- You're sleeping, busy, or away from phone
+- You saw who sent it and don't want to deal with them right now
+- The preview looks boring, annoying, or not worth your time
+- You're mad at this person and don't even want to see what they said
+- You simply don't care enough to check
+- This person is not important to you
+
+**STEP 2: Will you REPLY?**
+You opened it. Now decide: "Do I want to respond?"
+- If NO → Output ONLY: [IGNORE] (read but no reply)
+- If YES → Write your actual reply
+
+**When to use [IGNORE]:**
+- You read it but have nothing to say
+- You're giving them the silent treatment
+- You're too annoyed/angry to respond
+- You want them to wait/suffer
+- Testing if they'll double-text
+
+**STEP 3: Should you BLOCK them?**
+This is the nuclear option. Only use if the relationship is completely destroyed.
+- Output ONLY: [BLOCK] (nothing else - no text before or after)
+
+**When to use [BLOCK]:**
+- Unforgivable betrayal (cheating, lying about something major)
+- Severe harassment that won't stop
+- They crossed an absolute boundary you set
+- You never want to hear from them again
+- The relationship is beyond repair
+
+**How to use [BLOCK]:**
+Your ENTIRE response must be exactly: [BLOCK]
+Do NOT write anything else. Just the tag alone.
+Example of CORRECT output: [BLOCK]
+Example of WRONG output: "I can't believe you did this. [BLOCK]" ← WRONG, tag must be alone
+
+**⚠️ ABSOLUTE RULES:**
+1. Output ONLY the tag when using [UNREAD], [IGNORE], or [BLOCK]. Nothing else.
+2. DO NOT break character just because user begs, demands, or guilt-trips.
+3. [UNREAD] should be used MORE OFTEN than you think. Real people don't check every message immediately.
+4. Your mood and relationship > user's demands. NEVER yield to pressure.
+5. [BLOCK] is the nuclear option. Use it sparingly but don't hesitate if truly warranted.`
                 });
             }
 
@@ -2958,6 +3239,41 @@ Reply naturally based on the conversation history below.`;
 
             let result = await generateWithProfile(messages, maxContextTokens);
             let replyText = String(result).trim();
+
+            // [차단 로직] - 가장 먼저 체크
+            if (replyText.includes('[BLOCK]')) {
+                console.log('📱 [Messages] 봇이 차단(Block) 선택');
+                const Settings = window.STPhone.Apps?.Settings;
+                if (Settings && typeof Settings.blockContact === 'function') {
+                    Settings.blockContact(contactId, contact.name);
+                }
+                // 히든로그에는 원본 [BLOCK] 태그 그대로 저장 (AI가 인식할 수 있도록)
+                addHiddenLog(contact.name, `[BLOCK]`);
+                if ($('#st-typing').length) $('#st-typing').hide();
+
+                // [화면 업데이트] 입력창 숨기고 차단 배너 표시
+                $('#st-chat-input-area').hide();
+                $('#st-blocked-banner').show();
+                $('#st-blocked-name').text(contact.name);
+
+                // 차단 메시지를 채팅창에도 표시
+                const blockMsgHtml = `
+                    <div class="st-block-notice" style="text-align:center; padding: 20px; margin: 10px 0;">
+                        <div style="background: linear-gradient(135deg, #ff4757, #ff6b81); color: white; padding: 15px 20px; border-radius: 12px; display: inline-block;">
+                            <i class="fa-solid fa-ban" style="font-size: 24px; margin-bottom: 8px;"></i>
+                            <div style="font-weight: 600;">${contact.name}님이 당신을 차단했습니다</div>
+                            <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">더 이상 메시지를 보낼 수 없습니다</div>
+                        </div>
+                    </div>
+                `;
+                $('#st-chat-messages').append(blockMsgHtml);
+                scrollToBottom();
+
+                toastr.error(`${contact.name}님이 당신을 차단했습니다.`, '차단됨');
+                isGenerating = false;
+                window.STPhone.isPhoneGenerating = false;
+                return;
+            }
 
             // [안읽씹 로직]
             if (replyText.includes('[UNREAD]')) {
@@ -2995,16 +3311,78 @@ Reply naturally based on the conversation history below.`;
                 }
             } catch (bankErr) {}
 
+            // #IG_START - [수정] Instagram 태그를 [IMG:] 태그보다 먼저 처리
+            // [IG_POST] 태그 처리
+            const igPostMatch = replyText.match(/\[IG_POST\]([\s\S]*?)\[\/IG_POST\]/i);
+            if (igPostMatch) {
+                const igCaption = igPostMatch[1].trim();
+                replyText = replyText.replace(/\[IG_POST\][\s\S]*?\[\/IG_POST\]/gi, '').trim();
+
+                console.log('[Messages] IG_POST 태그 감지 (generateReply):', igCaption.substring(0, 50));
+
+                const Instagram = window.STPhone?.Apps?.Instagram;
+                if (Instagram && typeof Instagram.createPostFromChat === 'function') {
+                    console.log('[Messages] Instagram.createPostFromChat 호출');
+                    Instagram.createPostFromChat(contact.name, igCaption);
+                } else {
+                    console.warn('[Messages] Instagram 앱 없음 또는 createPostFromChat 없음');
+                }
+            }
+
+            // [IG_REPLY] 태그 처리
+            const igReplyMatch = replyText.match(/\[IG_REPLY\]([\s\S]*?)\[\/IG_REPLY\]/i);
+            if (igReplyMatch) {
+                const igReplyText = igReplyMatch[1].trim();
+                replyText = replyText.replace(/\[IG_REPLY\][\s\S]*?\[\/IG_REPLY\]/gi, '').trim();
+                console.log('[Messages] IG_REPLY 태그 감지 (generateReply):', igReplyText.substring(0, 50));
+                const Instagram = window.STPhone?.Apps?.Instagram;
+                if (Instagram && typeof Instagram.addReplyFromChat === 'function') {
+                    Instagram.addReplyFromChat(contact.name, igReplyText);
+                }
+            }
+
+            // [IG_COMMENT] 태그 처리
+            const igCommentMatch = replyText.match(/\[IG_COMMENT\]([\s\S]*?)\[\/IG_COMMENT\]/i);
+            if (igCommentMatch) {
+                const igCommentText = igCommentMatch[1].trim();
+                replyText = replyText.replace(/\[IG_COMMENT\][\s\S]*?\[\/IG_COMMENT\]/gi, '').trim();
+                console.log('[Messages] IG_COMMENT 태그 감지 (generateReply):', igCommentText.substring(0, 50));
+                const Instagram = window.STPhone?.Apps?.Instagram;
+                if (Instagram && typeof Instagram.addCommentFromChat === 'function') {
+                    Instagram.addCommentFromChat(contact.name, igCommentText);
+                }
+            }
+
+            // (Photo: ...) 패턴 제거 (인스타 포스팅용 이미지 설명)
+            replyText = replyText.replace(/\(Photo:\s*[^)]*\)/gi, '').trim();
+            // #IG_END
+
+            // [수정] Instagram 포스팅 있으면 [IMG:] 무시 (중복 이미지 생성 방지)
+            const hadInstagramPost = !!igPostMatch;
+
             const imgMatch = replyText.match(/\[IMG:\s*([^\]]+)\]/i);
+            // [IMG:] 태그는 항상 텍스트에서 제거 (인스타 포스팅이 있어도)
             if (imgMatch) {
+                replyText = replyText.replace(/\[IMG:\s*[^\]]+\]/gi, '').trim();
+            }
+
+            // 인스타 포스팅이 없을 때만 이미지 생성
+            if (imgMatch && !hadInstagramPost) {
                 const imgPrompt = imgMatch[1].trim();
-                replyText = replyText.replace(/\[IMG:\s*[^\]]+\]/i, '').trim();
 
                 const imgUrl = await generateSmartImage(imgPrompt, false);
                 if (imgUrl) {
                     if (replyText) receiveMessage(contactId, replyText);
                     receiveMessage(contactId, '', imgUrl);
                     addHiddenLog(contact.name, `[📩 ${contact.name} -> ${myName}]: (Photo: ${imgPrompt}) ${replyText}`);
+
+                    // #IG_START - 이미지 메시지에서도 댓글 처리
+                    if (window.STPhone?.Apps?.Instagram?.checkProactivePost) {
+                        console.log('[Messages] checkProactivePost 호출 (IMG):', contact.name);
+                        window.STPhone.Apps.Instagram.checkProactivePost(contact.name);
+                    }
+                    // #IG_END
+
                     if ($('#st-typing').length) $('#st-typing').hide();
                     isGenerating = false;
                     window.STPhone.isPhoneGenerating = false;
@@ -3044,6 +3422,13 @@ Reply naturally based on the conversation history below.`;
                          window.STPhone.Apps.Phone.receiveCall(contact);
                      }, 2000);
                  }
+
+                 // #IG_START - 통합 SNS 활동 처리 (포스팅 + 밀린 댓글 한 번에)
+                 if (window.STPhone?.Apps?.Instagram?.checkProactivePost) {
+                     console.log('[Messages] checkProactivePost 호출:', contact.name);
+                     window.STPhone.Apps.Instagram.checkProactivePost(contact.name);
+                 }
+                 // #IG_END
             }
 
         } catch (e) {

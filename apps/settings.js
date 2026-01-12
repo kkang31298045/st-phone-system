@@ -27,7 +27,7 @@ const defaultSettings = {
 
         // [AI 동작 설정]
         chatToSms: true,
-        prefill: '',
+        prefill: '알겠습니다. 현재 캐릭터들이 문자중임을 인지하고 ""사용과 소설 작성을 지양하겠습니다. 또한 캐릭터의 성격과 말투에 맞게 답변을 작성하고, [📩 char -> user]: 같은 접두사를 ***절대로*** 붙이지 않겠습니다.',
 
         // [번역 설정]
         translateEnabled: false,
@@ -50,23 +50,16 @@ Text to translate:`,
         readReceiptEnabled: true, // [NEW] 읽음 확인 기능 (1 표시)
 
         // [문자 앱 프롬프트] - 프롬프트 로직 강화
-        smsSystemPrompt: `[System] You are Veda texting User. Stay in character.
+        smsSystemPrompt: `[System] You are {{char}} texting {{user}}. Stay in character.
 - Write SMS-style: short, casual, multiple messages separated by line breaks
 - No narration, no prose, no quotation marks
 - DO NOT use flowery language. DO NOT output character name prefix.
-
-### 👓 READ RECEIPT STATUS (IMPORTANT)
-User's message is on your phone notification screen. Decide your action:
-1. **REPLY:** To read and reply, simply write your message text.
-2. **READ & IGNORE (읽씹):** To read but NOT reply (ghosting/angry), output ONLY: [IGNORE]
-3. **DO NOT READ (안읽씹):** If you are asleep, busy, or avoiding the phone, output ONLY: [UNREAD]
-   (If you output [UNREAD], the user will see '1' next to their message, meaning you haven't checked it.)
+- may use: emojis, slang, abbreviations, typo, and internet speak
 
 ### 📷 PHOTO REQUESTS
 To send a photo, reply with: [IMG: vivid description of photo content]
 
-### 📞 CALL INITIATION
-
+###  CALL INITIATION
 To start a voice call, append [call to user] at the very end.
 NEVER decide {{user}}'s reaction. Just generate the tag and stop.
 
@@ -112,18 +105,37 @@ Analyze the relationship and current situation, then output a JSON object define
 {"text": "대사_입력"}`,
 
         // [카메라 앱 프롬프트]
-        cameraPrompt: `[System] You are an expert image prompt generator for Stable Diffusion.
-Convert the user's simple description into a detailed, high-quality image generation prompt.
+        cameraPrompt: `[System] AI Image Generation Prompt Generator (Danbooru-style Tags)
 
-Rules:
-    1. Identify all characters mentioned in the request from the [Visual Tag Library] and use their tags.
-    2. If multiple characters are mentioned, combine their tags naturally.
-    3. Output ONLY a single <pic prompt="..."> tag, nothing else.
-    4. The prompt inside should be in English, descriptive, and vivid.
-    5. Keep it under 250 characters.
+### Core Rules
+1. Output ONLY a single <pic prompt="..."> tag, nothing else.
+2. All prompts MUST use Danbooru-style tags in **English only**.
+3. Hair color and eye color tags are **mandatory** for all characters.
+4. Do NOT include non-Danbooru tags like specific heights or numerical ages.
+5. Do NOT use "looking at viewer" tag for images with 2+ characters unless requested.
 
-Example output format:
-    <pic prompt="a fluffy orange cat, warm sunlight, soft focus">`,
+### Character Tagging Format
+**Single Character:**
+- Start with 1girl or 1boy
+- Example: 1girl, brown hair, long hair, green eyes, on bed, ...
+
+**Multiple Characters:**
+- Start with total count tag (e.g., 2boys, 2girls, 1boy 1girl). Do NOT use generic tags like "2people".
+- Use vertical bar | to separate each character's description.
+- Example: 2boys, 1girl, indoors, mansion, |boy, black hair, green eyes, carrying girl, |girl, blonde hair, wavy long hair, blue eyes, ...
+
+### Tag Order Rule (CRITICAL)
+- NEVER change the order of tags or alter special syntax (e.g., 2::tag::, -2::tag::) from the [Visual Tag Library]. Preserve them exactly.
+
+### NSFW
+- Always include the "nsfw" tag for explicit situations.
+
+### Task Instructions
+1. READ the user's request.
+2. IDENTIFY characters from [Visual Tag Library] and use their tags **exactly as written**.
+3. ADD situational tags: pose, background, lighting, mood, camera angle.
+4. Keep prompt under 300 characters.
+5. Output ONLY: <pic prompt="tags, comma, separated">`,
 
         // [사진 메시지 프롬프트]
         photoMessagePrompt: `### Background Story (Chat Log)
@@ -135,7 +147,24 @@ Example output format:
 {{visualTags}}
 
 ### Task
-Generate a Stable Diffusion tag list based on the request below.
+Generate Danbooru-style tags for Stable Diffusion based on the request.
+
+### Danbooru Tagging Rules (MUST FOLLOW)
+1. ALL tags must be in **English only**.
+2. Hair color and eye color tags are **mandatory** for all characters.
+3. Do NOT include non-Danbooru tags (specific heights, numerical ages).
+4. Do NOT use "looking at viewer" for 2+ character images unless requested.
+
+### Character Format
+- **Single Character:** Start with 1girl or 1boy
+- **Multiple Characters:** Use count tag (2girls, 1boy 1girl, etc.) + vertical bar | to separate descriptions
+  - Example: 2girls, indoors, |girl, black hair, blue eyes, |girl, blonde hair, green eyes,
+
+### Tag Order Rule (CRITICAL)
+- NEVER alter the order or syntax (e.g., 2::tag::, -2::tag::) from [Visual Tag Library]. Copy exactly.
+
+### NSFW
+- Include "nsfw" tag for explicit content.
 
 ### User Request
 Input: "{{description}}"
@@ -144,9 +173,9 @@ Input: "{{description}}"
 ### Steps
 1. READ the [Background Story].
 2. IDENTIFY who is in the picture.
-3. COPY Visual Tags from [Visual Tag Library] for the appearing characters.
-4. ADD emotional/scenery tags based on Story (time, location, lighting).
-5. OUTPUT strictly comma-separated tags.
+3. COPY Visual Tags from [Visual Tag Library] exactly for appearing characters.
+4. ADD situational tags: pose, background, lighting, mood, camera angle.
+5. OUTPUT strictly comma-separated English Danbooru tags only.
 
 ### Response (Tags Only):`,
 
@@ -191,7 +220,57 @@ Example: "A selfie of {{char}} making a peace sign with coffee in hand"
 Example: "A sunset photo taken from {{char}}'s balcony"
 Example: "A blurry photo of a cute stray cat {{char}} found"
 
-Keep it under 50 words. Just the description, nothing else.`
+Keep it under 50 words. Just the description, nothing else.`,
+
+        // #IG_START - 인스타그램 설정
+        // [인스타그램 포스팅 프롬프트 - 채팅 주입용]
+        instagramPrompt: `### 📸 Instagram Posting
+To post on Instagram, append this tag at the END of your message:
+[IG_POST]Your caption here in Korean[/IG_POST]
+
+Example: "오늘 날씨 좋다~ [IG_POST]오늘 카페에서 작업 중! ☕️[/IG_POST]"
+
+Rules:
+- Only post when it makes sense (sharing moments, achievements, etc.)
+- Caption should be casual and short (1-2 sentences, Korean)
+- Do NOT include hashtags
+- Do NOT post every message - only when naturally appropriate`,
+
+        instagramPostEnabled: true,
+        instagramPostChance: 15,
+
+        // 통합 프롬프트 (상황판단 + 캡션 + 이미지프롬프트 한번에)
+        instaAllInOnePrompt: `You are {{charName}}. Based on the recent chat context, decide if you would post on Instagram right now.
+
+### Current Date
+{{currentDate}}{{eventsInfo}}
+
+### Context
+{{context}}
+
+### Your personality
+{{personality}}
+
+### Your visual tags for image generation
+{{visualTags}}
+
+### Task
+Respond in JSON format ONLY:
+{
+    "shouldPost": true or false,
+    "caption": "Short casual caption in Korean (1-2 sentences, NO hashtags)",
+    "imagePrompt": "detailed SD prompt in English: subject, pose, setting, lighting, style tags"
+}
+
+If the situation is not suitable for posting, set shouldPost to false.`,
+
+        instaCommentPrompt: `You are {{char}} commenting on {{postAuthor}}'s Instagram post.
+
+Post caption: "{{postCaption}}"
+
+Write a short, natural comment (1 sentence) that fits your personality.
+Output ONLY the comment text, no quotes.`
+        // #IG_END
     };
 
     let currentSettings = { ...defaultSettings };
@@ -443,6 +522,50 @@ function saveToStorage() {
     function getSettings() {
         loadFromStorage();
         return currentSettings;
+    }
+
+    // ========== 차단 목록 관리 ==========
+    function getBlockedStorageKey() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const chatId = ctx?.chatId || 'default';
+        return `st_phone_blocked_${chatId}`;
+    }
+
+    function getBlockedContacts() {
+        try {
+            const key = getBlockedStorageKey();
+            return JSON.parse(localStorage.getItem(key) || '[]');
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function blockContact(contactId, contactName) {
+        const blocked = getBlockedContacts();
+        if (!blocked.find(b => b.id === contactId)) {
+            blocked.push({ id: contactId, name: contactName, blockedAt: Date.now() });
+            localStorage.setItem(getBlockedStorageKey(), JSON.stringify(blocked));
+            console.log(`🚫 [Settings] ${contactName} 차단됨`);
+            return true;
+        }
+        return false;
+    }
+
+    function unblockContact(contactId) {
+        let blocked = getBlockedContacts();
+        const before = blocked.length;
+        blocked = blocked.filter(b => b.id !== contactId);
+        if (blocked.length < before) {
+            localStorage.setItem(getBlockedStorageKey(), JSON.stringify(blocked));
+            console.log(`✅ [Settings] ${contactId} 차단 해제됨`);
+            return true;
+        }
+        return false;
+    }
+
+    function isBlocked(contactId) {
+        const blocked = getBlockedContacts();
+        return blocked.some(b => b.id === contactId);
     }
 
     // 특정 프롬프트의 깊이 가져오기
@@ -891,6 +1014,58 @@ function saveToStorage() {
                                 <button class="st-btn-small" id="st-reset-photo-msg">기본값</button>
                             </div>
                         </div>
+
+                        <!-- #IG_START - 인스타그램 설정 + 프롬프트 통합 섹션 -->
+                        <div class="st-section">
+                            <div class="st-row-block">
+                                <span class="st-label" style="font-size: 16px; margin-bottom: 10px;"><i class="fa-brands fa-instagram" style="margin-right:8px; color: #E1306C;"></i>인스타그램 설정</span>
+                            </div>
+                            <div class="st-row">
+                                <div>
+                                    <span class="st-label"><i class="fa-solid fa-camera" style="margin-right:6px;"></i>자동 포스팅</span>
+                                    <div class="st-desc">AI 캐릭터가 자동으로 Instagram에 포스팅 (끄면 [IG_POST] 태그도 비활성화)</div>
+                                </div>
+                                <input type="checkbox" class="st-switch" id="st-set-insta-post-enabled">
+                            </div>
+                            <div id="st-insta-options">
+                                <div class="st-row-block">
+                                    <span class="st-label"><i class="fa-solid fa-dice" style="margin-right:6px;"></i>선제 포스팅 확률</span>
+                                    <span class="st-desc">AI 응답마다 자동 포스팅 확률 (0% = 댓글만 처리)</span>
+                                    <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                                        <input type="range" id="st-set-insta-post-chance" min="0" max="100" value="15" style="flex:1;">
+                                        <span id="st-insta-post-chance-display" style="min-width:40px; text-align:right;">15%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="st-section">
+                            <div class="st-row-block">
+                                <span class="st-label"><i class="fa-brands fa-instagram" style="margin-right:6px; color: #E1306C;"></i>인스타그램 채팅 주입 프롬프트</span>
+                                <span class="st-desc">AI가 Instagram 태그를 사용하도록 안내</span>
+                                <textarea class="st-textarea mono" id="st-prompt-instagram-tab" rows="8"></textarea>
+                                <button class="st-btn-small" id="st-reset-instagram-prompt-tab">기본값</button>
+                            </div>
+                        </div>
+
+                        <div class="st-section">
+                            <div class="st-row-block">
+                                <span class="st-label"><i class="fa-brands fa-instagram" style="margin-right:6px; color: #E1306C;"></i>인스타그램 통합 게시물 프롬프트</span>
+                                <span class="st-desc">프로액티브 포스팅 시 상황 판단용</span>
+                                <textarea class="st-textarea mono" id="st-prompt-insta-allinone-tab" rows="8"></textarea>
+                                <button class="st-btn-small" id="st-reset-insta-allinone-prompt-tab">기본값</button>
+                            </div>
+                        </div>
+
+                        <div class="st-section">
+                            <div class="st-row-block">
+                                <span class="st-label"><i class="fa-brands fa-instagram" style="margin-right:6px; color: #E1306C;"></i>인스타그램 댓글 생성 프롬프트</span>
+                                <span class="st-desc">캐릭터 댓글 작성 시 사용</span>
+                                <textarea class="st-textarea mono" id="st-prompt-insta-comment-tab" rows="6"></textarea>
+                                <button class="st-btn-small" id="st-reset-insta-comment-prompt-tab">기본값</button>
+                            </div>
+                        </div>
+                        <!-- #IG_END -->
                     </div>
             </div>
             <style>
@@ -1156,6 +1331,20 @@ $('#st-set-sms-persona').val(currentSettings.smsPersona);
         if (currentSettings.airdropEnabled) {
             $('#st-airdrop-options').show();
         }
+
+        // #IG_START - Instagram 설정 로드 (프롬프트 탭)
+        $('#st-set-insta-post-enabled-tab').prop('checked', currentSettings.instagramPostEnabled !== false);
+        $('#st-set-insta-post-chance-tab').val(currentSettings.instagramPostChance || 15);
+        $('#st-insta-post-chance-display-tab').text((currentSettings.instagramPostChance || 15) + '%');
+        if (currentSettings.instagramPostEnabled === false) {
+            $('#st-insta-options-tab').hide();
+        } else {
+            $('#st-insta-options-tab').show();
+        }
+        $('#st-prompt-instagram-tab').val(currentSettings.instagramPrompt || defaultSettings.instagramPrompt);
+        $('#st-prompt-insta-allinone-tab').val(currentSettings.instaAllInOnePrompt || defaultSettings.instaAllInOnePrompt);
+        $('#st-prompt-insta-comment-tab').val(currentSettings.instaCommentPrompt || defaultSettings.instaCommentPrompt);
+        // #IG_END
 
         $('#st-set-translate').prop('checked', currentSettings.translateEnabled);
         $('#st-set-translate-mode').val(currentSettings.translateDisplayMode || 'both');
@@ -1467,6 +1656,58 @@ $('#st-set-sms-persona').on('input', function() { currentSettings.smsPersona = $
             }
         });
 
+// #IG_START - Instagram 설정 이벤트 핸들러
+        $('#st-set-insta-post-enabled').on('change', function() {
+            currentSettings.instagramPostEnabled = $(this).is(':checked');
+            if (currentSettings.instagramPostEnabled) {
+                $('#st-insta-options').show();
+            } else {
+                $('#st-insta-options').hide();
+            }
+            saveToStorage();
+        });
+        $('#st-set-insta-post-chance').on('input', function() {
+            currentSettings.instagramPostChance = parseInt($(this).val()) || 15;
+            $('#st-insta-post-chance-display').text(currentSettings.instagramPostChance + '%');
+            saveToStorage();
+        });
+
+        // 프롬프트 탭용 인스타그램 이벤트 핸들러
+        $('#st-prompt-instagram-tab').on('input', function() {
+            currentSettings.instagramPrompt = $(this).val();
+            saveToStorage();
+        });
+        $('#st-reset-instagram-prompt-tab').on('click', () => {
+            if(confirm('인스타그램 프롬프트를 기본값으로 되돌릴까요?')) {
+                currentSettings.instagramPrompt = defaultSettings.instagramPrompt;
+                $('#st-prompt-instagram-tab').val(currentSettings.instagramPrompt);
+                saveToStorage();
+            }
+        });
+        $('#st-prompt-insta-allinone-tab').on('input', function() {
+            currentSettings.instaAllInOnePrompt = $(this).val();
+            saveToStorage();
+        });
+        $('#st-reset-insta-allinone-prompt-tab').on('click', () => {
+            if(confirm('인스타그램 올인원 프롬프트를 기본값으로 되돌릴까요?')) {
+                currentSettings.instaAllInOnePrompt = defaultSettings.instaAllInOnePrompt;
+                $('#st-prompt-insta-allinone-tab').val(currentSettings.instaAllInOnePrompt);
+                saveToStorage();
+            }
+        });
+        $('#st-prompt-insta-comment-tab').on('input', function() {
+            currentSettings.instaCommentPrompt = $(this).val();
+            saveToStorage();
+        });
+        $('#st-reset-insta-comment-prompt-tab').on('click', () => {
+            if(confirm('인스타그램 댓글 프롬프트를 기본값으로 되돌릴까요?')) {
+                currentSettings.instaCommentPrompt = defaultSettings.instaCommentPrompt;
+                $('#st-prompt-insta-comment-tab').val(currentSettings.instaCommentPrompt);
+                saveToStorage();
+            }
+        });
+// #IG_END
+
 // 번역 설정 이벤트
         $('#st-set-translate').on('change', function() {
             currentSettings.translateEnabled = $(this).is(':checked');
@@ -1627,7 +1868,12 @@ $('#st-reset-user-translate-prompt').on('click', () => {
             photoMessagePrompt: currentSettings.photoMessagePrompt,
             translatePrompt: currentSettings.translatePrompt,
             userTranslatePrompt: currentSettings.userTranslatePrompt,
-            prefill: currentSettings.prefill
+            prefill: currentSettings.prefill,
+            // #IG_START
+            instagramPrompt: currentSettings.instagramPrompt,
+            instaAllInOnePrompt: currentSettings.instaAllInOnePrompt,
+            instaCommentPrompt: currentSettings.instaCommentPrompt
+            // #IG_END
         };
 
         // JSON 파일로 변환
@@ -1725,6 +1971,23 @@ $('#st-reset-user-translate-prompt').on('click', () => {
                     $('#st-set-prefill').val(imported.prefill);
                     importedCount++;
                 }
+                // #IG_START
+                if (imported.instagramPrompt) {
+                    currentSettings.instagramPrompt = imported.instagramPrompt;
+                    $('#st-prompt-instagram-tab').val(imported.instagramPrompt);
+                    importedCount++;
+                }
+                if (imported.instaAllInOnePrompt) {
+                    currentSettings.instaAllInOnePrompt = imported.instaAllInOnePrompt;
+                    $('#st-prompt-insta-allinone-tab').val(imported.instaAllInOnePrompt);
+                    importedCount++;
+                }
+                if (imported.instaCommentPrompt) {
+                    currentSettings.instaCommentPrompt = imported.instaCommentPrompt;
+                    $('#st-prompt-insta-comment-tab').val(imported.instaCommentPrompt);
+                    importedCount++;
+                }
+                // #IG_END
 
                 // 저장
                 saveToStorage();
@@ -1787,5 +2050,5 @@ $('#st-reset-user-translate-prompt').on('click', () => {
         }, 1000);
     }
 
-    return { open, init, getSettings, getPromptDepth, updateSetting, syncFromSillyTavern };
+    return { open, init, getSettings, getPromptDepth, updateSetting, syncFromSillyTavern, getBlockedContacts, blockContact, unblockContact, isBlocked };
 })();
