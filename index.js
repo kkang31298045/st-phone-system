@@ -547,6 +547,11 @@ const EXTENSION_NAME = 'ST Phone System';
         if (typeof injectBankPrompt === 'function') {
             injectBankPrompt(data);
         }
+        
+        // [NEW] 인스타그램 프롬프트 주입
+        if (typeof injectInstagramPrompt === 'function') {
+            injectInstagramPrompt(data);
+        }
     }
 
     // [NEW] 은행 프롬프트 주입 함수
@@ -584,6 +589,68 @@ const EXTENSION_NAME = 'ST Phone System';
             }
         } catch (e) {
             console.warn(`[${EXTENSION_NAME}] Bank prompt injection failed:`, e);
+        }
+    }
+
+    // [NEW] 인스타그램 프롬프트 주입 함수
+    function injectInstagramPrompt(data) {
+        // 폰 앱에서 생성 중이면 스킵 (문자앱은 자체적으로 처리함)
+        if (window.STPhone?.isPhoneGenerating) {
+            return;
+        }
+        
+        // 방송(Streaming) 중이면 스킵
+        if (window.STPhone?.Apps?.Streaming?.isLive?.()) {
+            console.log('📺 [ST Phone] Streaming is active - Skipping Instagram prompt injection');
+            return;
+        }
+        
+        const Store = window.STPhone?.Apps?.Store;
+        const Settings = window.STPhone?.Apps?.Settings;
+        const currentSettings = Settings?.getSettings?.() || {};
+        
+        // 인스타그램 앱 설치됨 + 자동 포스팅 활성화된 경우에만 프롬프트 주입
+        if (!Store || !Store.isInstalled('instagram') || currentSettings.instagramPostEnabled === false) {
+            return;
+        }
+        
+        // [NEW] 선톡처럼 확률 체크 - 확률 미달이면 프롬프트 주입 안 함 (AI가 태그 안 쓰게)
+        const chance = currentSettings.instagramPostChance || 15;
+        if (chance === 0) {
+            console.log(`📸 [${EXTENSION_NAME}] Instagram 확률 0% - 프롬프트 주입 스킵`);
+            return;
+        }
+        
+        const roll = Math.random() * 100;
+        if (roll >= chance) {
+            console.log(`📸 [${EXTENSION_NAME}] Instagram 확률 미달 (${roll.toFixed(0)}% >= ${chance}%) - 프롬프트 주입 스킵`);
+            return;
+        }
+        
+        console.log(`📸 [${EXTENSION_NAME}] Instagram 확률 통과 (${roll.toFixed(0)}% < ${chance}%) - 프롬프트 주입`);
+        
+        // 인스타그램 프롬프트 가져오기 (기본값 포함)
+        let instagramPrompt = currentSettings.instagramPrompt;
+        if (!instagramPrompt) {
+            instagramPrompt = `### 📸 Instagram Posting
+To post on Instagram, append this tag at the END of your message:
+[IG_POST]Your caption here in Korean[/IG_POST]
+
+Example: "오늘 날씨 좋다~ [IG_POST]오늘 카페에서 작업 중! ☕️[/IG_POST]"
+
+Rules:
+- Only post when it makes sense (sharing moments, achievements, etc.)
+- Caption should be casual and short (1-2 sentences, Korean)
+- Do NOT include hashtags
+- Do NOT post every message - only when naturally appropriate`;
+        }
+        
+        if (instagramPrompt && data && data.chat && Array.isArray(data.chat)) {
+            data.chat.push({
+                role: 'system',
+                content: instagramPrompt
+            });
+            console.log(`📸 [${EXTENSION_NAME}] Instagram prompt injected`);
         }
     }
 
