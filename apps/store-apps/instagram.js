@@ -1386,32 +1386,31 @@ ${postingSection}
 {
     "newPost": {
         "shouldPost": true,
-        "caption": "Short caption in Korean (NO emoji, NO hashtag)",
-        "imagePrompt": "1boy/1girl, ${visualTags}, pose, scene, upper body"
+        "caption": "Korean text only, no symbols",
+        "imagePrompt": "1boy/1girl, visual tags, pose, scene, upper body"
     },
     "commentReplies": [
-        { "index": 1, "text": "Reply in Korean, 1-2 sentences" }
+        { "index": 1, "text": "Reply in Korean" }
     ]
 }
 
 ### Caption Rules:
 - MAX 50 characters
-- NO emoji (like 😊🎉💕)
-- NO hashtags (like #daily #selfie)
-- Just plain text caption
+- Write in plain Korean text ONLY
+- FORBIDDEN: emoji, hashtag, special symbols
 
 ### imagePrompt Rules (NAI/SD):
-- DO NOT include quality tags (masterpiece, best quality, highres)
-- START with count: "1girl", "1boy", "2girls", etc.
-- ADD character tags: "${visualTags}"
-- ADD pose/action: "smile, selfie, looking at viewer"
-- ADD scene: "cafe, window, sunlight"
-- END with framing: "upper body" or "cowboy shot"
+- DO NOT include quality tags
+- START with count: 1girl, 1boy, 2girls, etc.
+- ADD character tags: ${visualTags}
+- ADD pose/action: smile, selfie, looking at viewer
+- ADD scene: cafe, window, sunlight
+- END with framing: upper body or cowboy shot
 
 ### Rules:
-- If no post: {"newPost": {"shouldPost": false, "caption": "", "imagePrompt": ""}, "commentReplies": [...]}
-- If no pending comments: "commentReplies": []
-- Output ONLY the JSON object, nothing else`;
+- If no post: set shouldPost to false, leave caption and imagePrompt empty
+- If no pending comments: set commentReplies to empty array
+- Output ONLY the JSON object`;
 
         try {
             const result = await generateWithAI(prompt, 600);
@@ -1419,6 +1418,7 @@ ${postingSection}
             if (jsonMatch) {
                 try {
                     const parsed = JSON.parse(jsonMatch[0]);
+                    
                     return {
                         newPost: {
                             shouldPost: !!parsed.newPost?.shouldPost,
@@ -1426,7 +1426,7 @@ ${postingSection}
                             imagePrompt: parsed.newPost?.imagePrompt || ''
                         },
                         commentReplies: Array.isArray(parsed.commentReplies) ? parsed.commentReplies : [],
-                        pendingComments: pendingComments // 원본 데이터도 함께 반환
+                        pendingComments: pendingComments
                     };
                 } catch (parseError) {
                     console.warn('[Instagram] JSON 파싱 실패:', parseError.message);
