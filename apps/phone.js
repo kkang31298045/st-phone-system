@@ -35,6 +35,75 @@ window.STPhone.Apps.Phone = (function() {
             const context = window.SillyTavern?.getContext?.();
             if (!context) throw new Error('SillyTavern context not available');
 
+            const executeSlashCommands = context.executeSlashCommands || context.executeSlashCommandsWithOptions;
+
+            const findProfileName = async (id) => {
+                try {
+                    const parser = getSlashCommandParser();
+                    const listCmd = parser?.commands['profile-list'];
+                    const getCmd = parser?.commands['profile-get'];
+                    if (!listCmd || !getCmd) return null;
+
+                    const listResult = await listCmd.callback();
+                    const profiles = JSON.parse(listResult);
+                    if (Array.isArray(profiles)) {
+                        if (profiles.includes(id)) return id;
+                        for (const name of profiles) {
+                            try {
+                                const detail = await getCmd.callback({}, name);
+                                const profileData = JSON.parse(detail);
+                                const possibleId = profileData?.id || profileData?.profileId || profileData?.uuid;
+                                if (possibleId === id) return name;
+                            } catch (e) {
+                                continue;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    return null;
+                }
+                return null;
+            };
+
+            const runSlashGenWithProfile = async () => {
+                const parser = getSlashCommandParser();
+                const genCmd = parser?.commands['genraw'] || parser?.commands['gen'];
+                if (!genCmd) throw new Error('AI 명령어를 찾을 수 없습니다');
+
+                let originalProfile = null;
+                if (profileId && executeSlashCommands) {
+                    try {
+                        const currentResult = await executeSlashCommands('/profile');
+                        originalProfile = currentResult?.pipe || String(currentResult || '').trim();
+
+                        const targetProfileName = await findProfileName(profileId);
+                        if (targetProfileName && targetProfileName !== originalProfile) {
+                            await executeSlashCommands(`/profile ${targetProfileName}`);
+                            await new Promise((resolve) => setTimeout(resolve, 100));
+                        } else if (targetProfileName) {
+                            originalProfile = null;
+                        }
+                    } catch (e) {
+                        originalProfile = null;
+                    }
+                }
+
+                try {
+                    const result = await genCmd.callback({ quiet: 'true' }, prompt);
+                    const elapsedMs = (performance?.now?.() || 0) - startedAt;
+                    console.debug('📞 [Phone][AI] slash gen done', { debugId, elapsedMs: Math.round(elapsedMs), outLen: String(result || '').length });
+                    return String(result || '').trim();
+                } finally {
+                    if (originalProfile && executeSlashCommands) {
+                        try {
+                            await executeSlashCommands(`/profile ${originalProfile}`);
+                        } catch (e) {
+                            // no-op
+                        }
+                    }
+                }
+            };
+
             // Connection Profile이 설정되어 있으면 ConnectionManager 사용
             if (profileId) {
                 const connectionManager = context.ConnectionManagerRequestService;
@@ -46,30 +115,27 @@ window.STPhone.Apps.Phone = (function() {
                         overrides.max_tokens = maxTokens;
                     }
 
-                    const result = await connectionManager.sendRequest(
-                        profileId,
-                        [{ content: prompt, role: 'user' }],
-                        maxTokens,
-                        {},
-                        overrides
-                    );
+                    try {
+                        const result = await connectionManager.sendRequest(
+                            profileId,
+                            [{ content: prompt, role: 'user' }],
+                            maxTokens,
+                            {},
+                            overrides
+                        );
 
-                    const text = normalizeModelOutput(result);
-                    const elapsedMs = (performance?.now?.() || 0) - startedAt;
-                    console.debug('📞 [Phone][AI] sendRequest done', { debugId, elapsedMs: Math.round(elapsedMs), resultType: typeof result, outLen: String(text || '').length });
-                    return String(text || '').trim();
+                        const text = normalizeModelOutput(result);
+                        const elapsedMs = (performance?.now?.() || 0) - startedAt;
+                        console.debug('📞 [Phone][AI] sendRequest done', { debugId, elapsedMs: Math.round(elapsedMs), resultType: typeof result, outLen: String(text || '').length });
+                        return String(text || '').trim();
+                    } catch (e) {
+                        // Fallback to slash gen with profile switching
+                        return await runSlashGenWithProfile();
+                    }
                 }
             }
 
-            // Fallback: 기존 genraw/gen 명령어 사용
-            const parser = getSlashCommandParser();
-            const genCmd = parser?.commands['genraw'] || parser?.commands['gen'];
-            if (!genCmd) throw new Error('AI 명령어를 찾을 수 없습니다');
-
-            const result = await genCmd.callback({ quiet: 'true' }, prompt);
-            const elapsedMs = (performance?.now?.() || 0) - startedAt;
-            console.debug('📞 [Phone][AI] slash gen done', { debugId, elapsedMs: Math.round(elapsedMs), outLen: String(result || '').length });
-            return String(result || '').trim();
+            return await runSlashGenWithProfile();
 
         } catch (e) {
             const elapsedMs = (performance?.now?.() || 0) - startedAt;
